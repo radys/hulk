@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"log"
 )
 
 const __version__  = "1.0.1"
@@ -61,6 +62,11 @@ var (
 		"Opera/9.80 (Windows NT 5.2; U; ru) Presto/2.5.22 Version/10.51",
 	}
 	cur int32
+
+	file_access, _ = os.Create("/var/log/hulk/access.log") 
+	l_access = log.New(file_access, "", 0)
+	file_error, _ = os.Create("/var/log/hulk/error.log") 
+	l_error = log.New(file_error, "", 0)
 )
 
 type arrayFlags []string
@@ -82,6 +88,8 @@ func main() {
 		data    string
 		headers arrayFlags
 	)
+
+	os.MkdirAll("/var/log/hulk/", os.ModePerm)
 
 	flag.BoolVar(&version, "version", false, "print version and exit")
 	flag.BoolVar(&safe, "safe", false, "Autoshut after dos.")
@@ -166,6 +174,7 @@ func httpcall(url string, host string, data string, headers arrayFlags, s chan u
 
 	var param_joiner string
 	var client = new(http.Client)
+	var block string
 
 	if strings.ContainsRune(url, '?') {
 		param_joiner = "&"
@@ -178,9 +187,12 @@ func httpcall(url string, host string, data string, headers arrayFlags, s chan u
 		var err error
 
 		if data == "" {
-			q, err = http.NewRequest("GET", url+param_joiner+buildblock(rand.Intn(7)+3)+"="+buildblock(rand.Intn(7)+3), nil)
+			block = buildblock(rand.Intn(7)+3)+"="+buildblock(rand.Intn(7)+3)
+			q, err = http.NewRequest("GET", url+param_joiner+block, nil)
+			l_access.Println(url+param_joiner+block)
 		} else {
 			q, err = http.NewRequest("POST", url, strings.NewReader(data))
+			l_access.Println(url)
 		}
 
 		if err != nil {
@@ -205,7 +217,9 @@ func httpcall(url string, host string, data string, headers arrayFlags, s chan u
 
 		r, e := client.Do(q)
 		if e != nil {
-			fmt.Fprintln(os.Stderr, e.Error())
+			//fmt.Fprintln(os.Stderr, e.Error())
+			l_error.Println(e.Error())
+
 			if strings.Contains(e.Error(), "socket: too many open files") {
 				s <- callExitOnTooManyFiles
 				return
